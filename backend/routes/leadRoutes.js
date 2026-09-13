@@ -14,6 +14,9 @@ import {
   deleteNote,
   updateFollowUp,
   deleteFollowUp,
+  createFollowUp,
+  updateFollowUpEntry,
+  removeFollowUpEntry,
   getLeadStats,
   getFollowUps,
   getDashboardStats,
@@ -45,6 +48,11 @@ router.put("/:id", updateLead);
 router.patch("/:id/status", updateLeadStatus);
 router.patch("/:id/follow-up", updateFollowUp);
 router.delete("/:id/follow-up",deleteFollowUp);
+
+router.post("/:id/follow-ups", createFollowUp);
+router.patch("/:id/follow-ups/:followUpId", updateFollowUpEntry);
+router.delete("/:id/follow-ups/:followUpId", removeFollowUpEntry);
+
 router.delete("/:id", deleteLead);
 
 router.post("/:id/notes", addNote);

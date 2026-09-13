@@ -1,10 +1,11 @@
 import {
   ArrowLeft, Mail, Phone, Building2, CalendarDays, Clock3, MessageSquare,
-  CheckCircle2, Circle, Plus, Save, X, Edit3, Bell, TrendingUp, FileText,
+  CheckCircle2, Circle, Plus, X, Bell, TrendingUp, FileText,
   Trash2, AlertTriangle,
   Share2,
   Globe, Star, Gauge,
   MessageCircle, Camera, Briefcase, Video, ExternalLink, Inbox, MapPinned,
+  Images, Quote,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
@@ -38,6 +39,35 @@ const LOST_REASONS = [
 
 function getInitials(name = "") {
   return name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "?";
+}
+
+// Spreadsheet "image" columns often hold 3–4 URLs in one cell,
+// comma-separated. Split and clean them into a plain array.
+function parseImageList(value) {
+  if (!value) return [];
+  return String(value)
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean);
+}
+
+// A "Top 5 Comments" cell can be delimited any number of ways
+// depending on how the spreadsheet was built. Try the common
+// delimiters in order of specificity and use whichever actually
+// splits the text into more than one piece; otherwise show it as
+// a single block.
+function parseCommentsList(value) {
+  if (!value) return [];
+  const raw = String(value).trim();
+  if (!raw) return [];
+
+  const delimiterPatterns = [/\r?\n+/, /\s*\|\s*/, /\s*;\s*/, /(?:^|\s)\d+[.)]\s+/];
+  for (const pattern of delimiterPatterns) {
+    const parts = raw.split(pattern).map((part) => part.trim()).filter(Boolean);
+    if (parts.length > 1) return parts;
+  }
+
+  return [raw];
 }
 
 function StatusBadge({ status }) {
@@ -179,10 +209,12 @@ function LeadDetails() {
   const [savingNote, setSavingNote] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
-  const [followUpDate, setFollowUpDate] = useState("");
+  const [showFullMessage, setShowFullMessage] = useState(false);
+
+  const [newFollowUpDate, setNewFollowUpDate] = useState("");
+  const [newFollowUpNote, setNewFollowUpNote] = useState("");
   const [savingFollowUp, setSavingFollowUp] = useState(false);
-  const [deletingFollowUp, setDeletingFollowUp] = useState(false);
-  const [showFollowUpEditor, setShowFollowUpEditor] = useState(false);
+  const [followUpActionId, setFollowUpActionId] = useState(null);
 
   const [showLostReasonModal, setShowLostReasonModal] = useState(false);
   const [selectedLostReason, setSelectedLostReason] = useState("");
@@ -230,32 +262,49 @@ function LeadDetails() {
 
   const followUpStatus = getFollowUpStatus();
 
-  const handleSaveFollowUp = async () => {
-    if (!followUpDate) {
+  const handleAddFollowUp = async () => {
+    if (!newFollowUpDate) {
       toast.error("Please select a date and time");
       return;
     }
     try {
       setSavingFollowUp(true);
-      const response = await leadService.updateFollowUp(id, followUpDate);
+      const response = await leadService.addFollowUp(id, {
+        dueDate: newFollowUpDate,
+        note: newFollowUpNote.trim(),
+      });
       setLead(response.lead);
-      setShowFollowUpEditor(false);
-      setFollowUpDate("");
+      setNewFollowUpDate("");
+      setNewFollowUpNote("");
       toast.success("Follow-up scheduled successfully");
     } catch (error) {
-      console.error("Failed to update follow-up:", error);
+      console.error("Failed to add follow-up:", error);
       toast.error(error.response?.data?.message || "Failed to schedule follow-up");
     } finally {
       setSavingFollowUp(false);
     }
   };
 
-  const handleDeleteFollowUp = () => {
+  const handleToggleFollowUp = async (followUp) => {
+    const nextStatus = followUp.status === "done" ? "pending" : "done";
+    try {
+      setFollowUpActionId(followUp._id);
+      const response = await leadService.updateFollowUpStatus(id, followUp._id, nextStatus);
+      setLead(response.lead);
+    } catch (error) {
+      console.error("Failed to update follow-up:", error);
+      toast.error(error.response?.data?.message || "Failed to update follow-up");
+    } finally {
+      setFollowUpActionId(null);
+    }
+  };
+
+  const handleDeleteFollowUpEntry = (followUpId) => {
     toast(
       (t) => (
-        <div className="w-[300px]">
-          <p className="font-semibold text-slate-900">Delete follow-up?</p>
-          <p className="mt-1 text-sm text-slate-500">The scheduled follow-up will be removed.</p>
+        <div className="w-[280px]">
+          <p className="font-semibold text-slate-900">Delete this follow-up?</p>
+          <p className="mt-1 text-sm text-slate-500">This action cannot be undone.</p>
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={() => toast.dismiss(t.id)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
               Cancel
@@ -265,23 +314,20 @@ function LeadDetails() {
               onClick={async () => {
                 toast.dismiss(t.id);
                 try {
-                  setDeletingFollowUp(true);
-                  const response = await leadService.deleteFollowUp(id);
+                  setFollowUpActionId(followUpId);
+                  const response = await leadService.deleteFollowUpEntry(id, followUpId);
                   setLead(response.lead);
-                  setFollowUpDate("");
-                  setShowFollowUpEditor(false);
                   toast.success("Follow-up deleted successfully");
                 } catch (error) {
                   console.error("Failed to delete follow-up:", error);
                   toast.error(error.response?.data?.message || "Failed to delete follow-up");
                 } finally {
-                  setDeletingFollowUp(false);
+                  setFollowUpActionId(null);
                 }
               }}
-              disabled={deletingFollowUp}
-              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-700"
             >
-              {deletingFollowUp ? "Deleting..." : "Delete"}
+              Delete
             </button>
           </div>
         </div>
@@ -289,6 +335,45 @@ function LeadDetails() {
       { duration: Infinity }
     );
   };
+
+  // Status/style for one follow-up entry in the list (separate from
+  // getFollowUpStatus above, which only describes the lead's single
+  // nearest-pending date used by the stat card).
+  const getEntryStatus = (entry) => {
+    if (entry.status === "done") {
+      return {
+        key: "done",
+        label: "Completed",
+        wrapClass: "border-green-200 bg-green-50 dark:border-green-500/20 dark:bg-green-500/10",
+        iconClass: "text-green-500",
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(entry.dueDate);
+    const dueDay = new Date(due);
+    dueDay.setHours(0, 0, 0, 0);
+
+    const diffDays = Math.ceil((dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) {
+      return { key: "overdue", label: "Overdue", wrapClass: "border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-500/10", iconClass: "text-red-500" };
+    }
+    if (diffDays === 0) {
+      return { key: "today", label: "Today", wrapClass: "border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10", iconClass: "text-amber-500" };
+    }
+    if (diffDays === 1) {
+      return { key: "tomorrow", label: "Tomorrow", wrapClass: "border-indigo-200 bg-indigo-50 dark:border-indigo-500/20 dark:bg-indigo-500/10", iconClass: "text-indigo-500" };
+    }
+    return { key: "upcoming", label: `In ${diffDays} days`, wrapClass: "border-indigo-200 bg-indigo-50 dark:border-indigo-500/20 dark:bg-indigo-500/10", iconClass: "text-indigo-500" };
+  };
+
+  const sortedFollowUps = [...(lead?.followUps || [])].sort((a, b) => {
+    if (a.status !== b.status) return a.status === "done" ? 1 : -1;
+    const diff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    return a.status === "done" ? -diff : diff;
+  });
 
   const handleStatusChange = async (status) => {
     if (status === "lost") {
@@ -409,6 +494,8 @@ function LeadDetails() {
     ? Math.max(0, Math.floor((new Date().getTime() - new Date(lead.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
     : 0;
   const notesCount = lead.notes?.length || 0;
+  const imageList = parseImageList(lead.imageUrl);
+  const commentsList = parseCommentsList(lead.topComments);
   const hasWebsiteAudit = Boolean(
     lead.website ||
       lead.address ||
@@ -455,7 +542,21 @@ function LeadDetails() {
 
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-base font-bold text-white shadow-sm">
+              {imageList[0] ? (
+                <img
+                  src={imageList[0]}
+                  alt={lead.name}
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                    e.currentTarget.nextSibling.style.display = "flex";
+                  }}
+                  className="h-14 w-14 shrink-0 rounded-2xl object-cover shadow-sm"
+                />
+              ) : null}
+              <div
+                style={imageList[0] ? { display: "none" } : undefined}
+                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-base font-bold text-white shadow-sm"
+              >
                 {getInitials(lead.name)}
               </div>
               <div>
@@ -483,6 +584,31 @@ function LeadDetails() {
             <ContactChip icon={<Share2 size={17} />} tone="purple" label="Source" value={lead.source || "Not provided"} />
           </div>
         </section>
+
+        {imageList.length > 0 && (
+          <SectionCard icon={<Images size={17} />} title="Photos" subtitle={`${imageList.length} image${imageList.length === 1 ? "" : "s"} from the leads spreadsheet.`}>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {imageList.map((url, index) => (
+                <a
+                  key={`${url}-${index}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative block aspect-square overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950"
+                >
+                  <img
+                    src={url}
+                    alt={`${lead.name} ${index + 1}`}
+                    onError={(e) => {
+                      e.currentTarget.parentElement.style.display = "none";
+                    }}
+                    className="h-full w-full object-cover transition duration-200 group-hover:scale-105"
+                  />
+                </a>
+              ))}
+            </div>
+          </SectionCard>
+        )}
 
         {hasWebsiteAudit && (
           <>
@@ -569,6 +695,22 @@ function LeadDetails() {
               </SectionCard>
             )}
           </>
+        )}
+
+        {commentsList.length > 0 && (
+          <SectionCard icon={<Quote size={17} />} title="Top Comments" subtitle="Customer feedback pulled in from the leads spreadsheet.">
+            <div className="space-y-3">
+              {commentsList.slice(0, 5).map((comment, index) => (
+                <div
+                  key={index}
+                  className="flex gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950"
+                >
+                  <Quote size={16} className="mt-0.5 shrink-0 text-indigo-400 dark:text-indigo-500" />
+                  <p className="text-sm leading-6 text-gray-700 dark:text-gray-300">{comment}</p>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
         )}
 
         <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -662,142 +804,136 @@ function LeadDetails() {
         </section>
 
         <div className="grid gap-6 lg:grid-cols-3">
-          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm lg:col-span-2 dark:border-gray-800 dark:bg-gray-900">
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm lg:col-span-1 dark:border-gray-800 dark:bg-gray-900">
             <div className="flex items-center gap-3">
               <MessageSquare size={20} className="text-blue-600 dark:text-blue-400" />
               <h2 className="font-bold text-gray-900 dark:text-white">Original Message</h2>
             </div>
-            <div className="mt-5 rounded-xl bg-gray-50 p-5 dark:bg-gray-950">
-              <p className="whitespace-pre-wrap leading-7 text-gray-700 dark:text-gray-300">{lead.message || "No message provided."}</p>
+            <div className="mt-4 rounded-xl bg-gray-50 p-4 dark:bg-gray-950">
+              {lead.message ? (
+                <>
+                  <p className={`whitespace-pre-wrap text-sm leading-6 text-gray-700 dark:text-gray-300 ${showFullMessage ? "" : "line-clamp-4"}`}>
+                    {lead.message}
+                  </p>
+                  {lead.message.length > 160 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowFullMessage((value) => !value)}
+                      className="mt-2 text-xs font-semibold text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                      {showFullMessage ? "Show less" : "Show more"}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-gray-400 dark:text-gray-500">No message provided.</p>
+              )}
             </div>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
-                  <CalendarDays size={19} />
-                </div>
-                <div>
-                  <h2 className="font-bold text-slate-900 dark:text-white">Follow-up</h2>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Never miss your next conversation</p>
-                </div>
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2 dark:border-slate-800 dark:bg-slate-900">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
+                <CalendarDays size={19} />
               </div>
-
-              {lead.followUpDate && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFollowUpDate(new Date(lead.followUpDate).toISOString().slice(0, 16));
-                    setShowFollowUpEditor(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/10"
-                >
-                  <Edit3 size={14} />
-                  Change
-                </button>
-              )}
+              <div>
+                <h2 className="font-bold text-slate-900 dark:text-white">Follow-ups</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Schedule as many follow-ups as you need, with a note on each.</p>
+              </div>
             </div>
 
-            <div className="mt-5">
-              {lead.followUpDate ? (
-                <div
-                  className={`rounded-xl border p-4 ${
-                    followUpStatus?.key === "overdue"
-                      ? "border-red-200 bg-red-50 dark:border-red-500/20 dark:bg-red-500/10"
-                      : followUpStatus?.key === "today"
-                        ? "border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/10"
-                        : "border-indigo-200 bg-indigo-50 dark:border-indigo-500/20 dark:bg-indigo-500/10"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <Bell
-                      size={18}
-                      className={
-                        followUpStatus?.key === "overdue"
-                          ? "mt-0.5 text-red-500"
-                          : followUpStatus?.key === "today"
-                            ? "mt-0.5 text-amber-500"
-                            : "mt-0.5 text-indigo-500"
-                      }
-                    />
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{followUpStatus?.label}</p>
-                      <p className="mt-1 font-semibold text-slate-900 dark:text-white">
-                        {new Date(lead.followUpDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
-                      </p>
-                    </div>
-                  </div>
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,220px)_1fr]">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">Date &amp; time</label>
+                  <input
+                    type="datetime-local"
+                    value={newFollowUpDate}
+                    onChange={(e) => setNewFollowUpDate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
                 </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600 dark:text-slate-400">Note (optional)</label>
+                  <input
+                    type="text"
+                    value={newFollowUpNote}
+                    onChange={(e) => setNewFollowUpNote(e.target.value)}
+                    placeholder="What's this follow-up about?"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddFollowUp}
+                disabled={savingFollowUp || !newFollowUpDate}
+                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus size={16} />
+                {savingFollowUp ? "Scheduling..." : "Add Follow-up"}
+              </button>
+            </div>
+
+            <div className="mt-5 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+              {sortedFollowUps.length ? (
+                sortedFollowUps.map((entry) => {
+                  const entryStatus = getEntryStatus(entry);
+                  const isBusy = followUpActionId === entry._id;
+                  return (
+                    <div key={entry._id} className={`rounded-xl border p-4 ${entryStatus.wrapClass}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <Bell size={17} className={`mt-0.5 shrink-0 ${entryStatus.iconClass}`} />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{entryStatus.label}</p>
+                            <p className={`mt-1 font-semibold text-slate-900 dark:text-white ${entry.status === "done" ? "line-through opacity-70" : ""}`}>
+                              {new Date(entry.dueDate).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                            </p>
+                            {entry.note && (
+                              <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-slate-600 dark:text-slate-400">{entry.note}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleFollowUp(entry)}
+                            disabled={isBusy}
+                            title={entry.status === "done" ? "Mark as pending" : "Mark as done"}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-500/10 dark:hover:text-green-400 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {entry.status === "done" ? <Circle size={16} /> : <CheckCircle2 size={16} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteFollowUpEntry(entry._id)}
+                            disabled={isBusy}
+                            title="Delete follow-up"
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {isBusy ? (
+                              <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-red-500" />
+                            ) : (
+                              <Trash2 size={15} />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
                 <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center dark:border-slate-700">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
                     <CalendarDays size={22} />
                   </div>
-                  <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">No follow-up scheduled</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Schedule the next action for this lead.</p>
+                  <p className="mt-3 text-sm font-medium text-slate-700 dark:text-slate-300">No follow-ups scheduled</p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Add one above to plan your next action.</p>
                 </div>
               )}
             </div>
-
-            {lead.followUpDate && !showFollowUpEditor && (
-              <button
-                type="button"
-                onClick={handleDeleteFollowUp}
-                disabled={deletingFollowUp}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-500/20 dark:text-red-400 dark:hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Trash2 size={16} />
-                Delete Follow-up
-              </button>
-            )}
-
-            {!showFollowUpEditor && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFollowUpDate(lead.followUpDate ? new Date(lead.followUpDate).toISOString().slice(0, 16) : "");
-                  setShowFollowUpEditor(true);
-                }}
-                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:border-indigo-500/40 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-400"
-              >
-                <CalendarDays size={16} />
-                {lead.followUpDate ? "Reschedule Follow-up" : "Schedule Follow-up"}
-              </button>
-            )}
-
-            {showFollowUpEditor && (
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/60">
-                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Follow-up date & time</label>
-                <input
-                  type="datetime-local"
-                  value={followUpDate}
-                  onChange={(e) => setFollowUpDate(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                />
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={handleSaveFollowUp}
-                    disabled={savingFollowUp || !followUpDate}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <Save size={15} />
-                    {savingFollowUp ? "Saving..." : "Save"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowFollowUpEditor(false);
-                      setFollowUpDate("");
-                    }}
-                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-slate-600 transition hover:bg-white dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-              </div>
-            )}
           </section>
         </div>
 

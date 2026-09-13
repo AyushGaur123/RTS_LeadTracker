@@ -41,7 +41,7 @@ export const getLeadById = async (req, res) => {
 // POST /api/leads — admin creates a lead manually
 export const createLead = async (req, res) => {
   try {
-    const { name, email, phone, company, message, source, status, followUpDate } = req.body;
+    const { name, email, phone, company, message, source, status, followUpDate, imageUrl, topComments } = req.body;
 
     if (!name) {
       return res.status(400).json({ success: false, message: "Name is required." });
@@ -56,6 +56,8 @@ export const createLead = async (req, res) => {
       source: source || "Website",
       status: status || "new",
       followUpDate: followUpDate || undefined,
+      imageUrl,
+      topComments,
       companyId: req.user._id,
     });
 
@@ -114,7 +116,7 @@ export const updateLead = async (req, res) => {
       return res.status(result.status).json({ success: false, message: result.message });
     }
 
-    const { name, email, phone, company, message, source } = req.body;
+    const { name, email, phone, company, message, source, imageUrl, topComments } = req.body;
 
     const updatedLead = await Lead.updateFields(req.params.id, req.user._id, {
       name,
@@ -123,6 +125,8 @@ export const updateLead = async (req, res) => {
       company,
       message,
       source,
+      imageUrl,
+      topComments,
     });
 
     res.json({ success: true, message: "Lead updated successfully.", lead: updatedLead });

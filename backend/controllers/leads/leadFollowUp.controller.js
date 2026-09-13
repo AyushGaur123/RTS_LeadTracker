@@ -70,6 +70,88 @@ export const deleteFollowUp = async (req, res) => {
   }
 };
 
+// POST /api/leads/:id/follow-ups
+export const createFollowUp = async (req, res) => {
+  try {
+    const { dueDate, note } = req.body;
+
+    if (!dueDate) {
+      return res.status(400).json({ success: false, message: "A follow-up date is required." });
+    }
+
+    const parsedDate = new Date(dueDate);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ success: false, message: "Invalid follow-up date." });
+    }
+
+    const result = await findCompanyLead(req.params.id, req.user._id);
+    if (result.status) {
+      return res.status(result.status).json({ success: false, message: result.message });
+    }
+
+    const updatedLead = await Lead.addFollowUp(
+      req.params.id,
+      req.user._id,
+      parsedDate,
+      note?.trim(),
+      req.user._id
+    );
+
+    res.status(201).json({ success: true, message: "Follow-up scheduled successfully.", lead: updatedLead });
+  } catch (error) {
+    console.error("CREATE FOLLOW-UP ERROR:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// PATCH /api/leads/:id/follow-ups/:followUpId
+export const updateFollowUpEntry = async (req, res) => {
+  try {
+    const { status } = req.body;
+
+    if (!["pending", "done"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Status must be 'pending' or 'done'." });
+    }
+
+    const result = await findCompanyLead(req.params.id, req.user._id);
+    if (result.status) {
+      return res.status(result.status).json({ success: false, message: result.message });
+    }
+
+    const outcome = await Lead.updateFollowUpStatus(req.params.id, req.params.followUpId, req.user._id, status);
+
+    if (outcome.status) {
+      return res.status(outcome.status).json({ success: false, message: outcome.message });
+    }
+
+    res.json({ success: true, message: "Follow-up updated successfully.", lead: outcome.lead });
+  } catch (error) {
+    console.error("UPDATE FOLLOW-UP ENTRY ERROR:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// DELETE /api/leads/:id/follow-ups/:followUpId
+export const removeFollowUpEntry = async (req, res) => {
+  try {
+    const result = await findCompanyLead(req.params.id, req.user._id);
+    if (result.status) {
+      return res.status(result.status).json({ success: false, message: result.message });
+    }
+
+    const outcome = await Lead.deleteFollowUpEntry(req.params.id, req.params.followUpId, req.user._id);
+
+    if (outcome.status) {
+      return res.status(outcome.status).json({ success: false, message: outcome.message });
+    }
+
+    res.json({ success: true, message: "Follow-up deleted successfully.", lead: outcome.lead });
+  } catch (error) {
+    console.error("DELETE FOLLOW-UP ENTRY ERROR:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // GET /api/leads/follow-ups
 export const getFollowUps = async (req, res) => {
   try {

@@ -87,6 +87,32 @@ const deleteFollowUp = async (leadId) => {
   return response.data;
 };
 
+const addFollowUp = async (leadId, { dueDate, note }) => {
+  const response = await api.post(
+    `/leads/${leadId}/follow-ups`,
+    { dueDate, note }
+  );
+
+  return response.data;
+};
+
+const updateFollowUpStatus = async (leadId, followUpId, status) => {
+  const response = await api.patch(
+    `/leads/${leadId}/follow-ups/${followUpId}`,
+    { status }
+  );
+
+  return response.data;
+};
+
+const deleteFollowUpEntry = async (leadId, followUpId) => {
+  const response = await api.delete(
+    `/leads/${leadId}/follow-ups/${followUpId}`
+  );
+
+  return response.data;
+};
+
 const getStats = async () => {
   const response = await api.get(
     "/leads/stats"
@@ -180,6 +206,9 @@ const leadService = {
   deleteNote,
   updateFollowUp,
   deleteFollowUp,
+  addFollowUp,
+  updateFollowUpStatus,
+  deleteFollowUpEntry,
   getStats,
   getFollowUps,
   getLeadById,

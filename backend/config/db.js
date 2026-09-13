@@ -70,6 +70,8 @@ const LEADS_COLUMNS = [
   ["lost_at", "DATETIME NULL"],
   ["lost_reason", "ENUM('price','competitor','not_interested','no_response','other') NULL"],
   ["imported_from", "VARCHAR(255)"],
+  ["image_url", "TEXT"],
+  ["top_comments", "TEXT"],
   ["created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"],
   ["updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"],
 ];
@@ -164,6 +166,8 @@ const ensureTablesExist = async () => {
       lost_reason ENUM('price', 'competitor', 'not_interested', 'no_response', 'other') NULL,
 
       imported_from VARCHAR(255),
+      image_url TEXT,
+      top_comments TEXT,
 
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -195,6 +199,24 @@ const ensureTablesExist = async () => {
       INDEX idx_notes_lead (lead_id),
       CONSTRAINT fk_notes_lead FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
       CONSTRAINT fk_notes_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+  `);
+
+  // Multiple follow-ups per lead, each with its own optional note.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lead_follow_ups (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      lead_id INT NOT NULL,
+      due_date DATETIME NOT NULL,
+      note TEXT,
+      status ENUM('pending', 'done') DEFAULT 'pending',
+      created_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+      INDEX idx_followups_lead (lead_id),
+      CONSTRAINT fk_followups_lead FOREIGN KEY (lead_id) REFERENCES leads(id) ON DELETE CASCADE,
+      CONSTRAINT fk_followups_user FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
 };

@@ -43,6 +43,23 @@ const FIELD_MAP = {
   email_type: "emailType",
   all_emails: "allEmails",
   google_maps_url: "googleMapsUrl",
+  image: "imageUrl",
+  image_url: "imageUrl",
+  photo: "imageUrl",
+  photo_url: "imageUrl",
+  picture: "imageUrl",
+  picture_url: "imageUrl",
+  logo: "imageUrl",
+  logo_url: "imageUrl",
+  profile_image: "imageUrl",
+  avatar: "imageUrl",
+  top_5_comments: "topComments",
+  top_comments: "topComments",
+  top_5_reviews: "topComments",
+  comments: "topComments",
+  review_comments: "topComments",
+  customer_comments: "topComments",
+  reviews: "topComments",
 };
 
 const NUMBER_FIELDS = new Set([

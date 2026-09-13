@@ -17,6 +17,9 @@ export {
   updateFollowUp,
   deleteFollowUp,
   getFollowUps,
+  createFollowUp,
+  updateFollowUpEntry,
+  removeFollowUpEntry,
 } from "./leadFollowUp.controller.js";
 
 export {
